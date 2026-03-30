@@ -2,33 +2,64 @@ from flask import Flask, request, jsonify, send_from_directory
 from backend.order_tracker import OrderTracker
 from backend.in_memory_storage import InMemoryStorage
 
-app = Flask(__name__, static_folder='../frontend')
+app = Flask(__name__, static_folder="../frontend")
 in_memory_storage = InMemoryStorage()
 order_tracker = OrderTracker(in_memory_storage)
 
-@app.route('/')
-def serve_index():
-    return send_from_directory(app.static_folder, 'index.html')
 
-@app.route('/<path:filename>')
+@app.route("/")
+def serve_index():
+    return send_from_directory(app.static_folder, "index.html")
+
+
+@app.route("/<path:filename>")
 def serve_static(filename):
     return send_from_directory(app.static_folder, filename)
 
-@app.route('/api/orders', methods=['POST'])
+
+@app.route("/api/orders", methods=["POST"])
 def add_order_api():
-    pass
+    data = request.json
+    order_tracker.add_order(
+        data["order_id"],
+        data["item_name"],
+        data["quantity"],
+        data["customer_id"],
+        data.get("status", "pending"),
+    )
+    return jsonify({"order_id": data["order_id"]}), 201
 
-@app.route('/api/orders/<string:order_id>', methods=['GET'])
+
+@app.route("/api/orders/<string:order_id>", methods=["GET"])
 def get_order_api(order_id):
-    pass
+    order = order_tracker.get_order_by_id(order_id)
+    if order is None:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify({"order_id": order_id, **order}), 200
 
-@app.route('/api/orders/<string:order_id>/status', methods=['PUT'])
+
+@app.route("/api/orders/<string:order_id>/status", methods=["PUT"])
 def update_order_status_api(order_id):
-    pass
+    data = request.json
+    order_tracker.update_order_status(order_id, data["new_status"])
+    order = order_tracker.get_order_by_id(order_id)
+    return jsonify({"order_id": order_id, **order}), 200
 
-@app.route('/api/orders', methods=['GET'])
+
+@app.route("/api/orders", methods=["GET"])
 def list_orders_api():
-    pass
+    status = request.args.get("status")
+    all_orders = in_memory_storage.get_all_orders()
+    if status:
+        result = [
+            {"order_id": k, **v}
+            for k, v in all_orders.items()
+            if v.get("status") == status
+        ]
+    else:
+        result = [{"order_id": k, **v} for k, v in all_orders.items()]
+    return jsonify(result), 200
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     app.run(host="0.0.0.0", debug=True)
